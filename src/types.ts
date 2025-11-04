@@ -1,4 +1,4 @@
-export type Tool = 'select' | 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'eraser' | 'draw';
+export type Tool = 'select' | 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'eraser' | 'draw' | 'diamond' | 'ellipse' | 'star' | 'triangle' | 'hexagon';
 
 export interface Point {
   x: number;
@@ -7,7 +7,7 @@ export interface Point {
 
 export interface DrawingElement {
   id: string;
-  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'draw';
+  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'draw' | 'diamond' | 'ellipse' | 'star' | 'triangle' | 'hexagon';
   x: number;
   y: number;
   width: number;
@@ -17,7 +17,17 @@ export interface DrawingElement {
   strokeWidth: number;
   text?: string;
   points?: Point[];
-  seed?: number; // Add seed for consistent rough.js rendering
+  seed?: number;
+  opacity?: number;
+  rotation?: number;
+  locked?: boolean;
+  layer?: number;
+  fontSize?: number;
+  fontFamily?: string;
+  textAlign?: 'left' | 'center' | 'right';
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
+  roughness?: number;
+  bowing?: number;
 }
 
 export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | null;
@@ -25,6 +35,7 @@ export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | n
 export interface AppState {
   elements: DrawingElement[];
   selectedElementId: string | null;
+  selectedElementIds: string[];
   currentTool: Tool;
   strokeColor: string;
   fillColor: string;
@@ -35,4 +46,13 @@ export interface AppState {
   editingElementId: string | null;
   isResizing: boolean;
   resizeHandle: ResizeHandle;
+  zoom: number;
+  panOffset: Point;
+  history: DrawingElement[][];
+  historyIndex: number;
+  gridEnabled: boolean;
+  snapToGrid: boolean;
+  darkMode: boolean;
+  multiSelectMode: boolean;
+  clipboard: DrawingElement[];
 }

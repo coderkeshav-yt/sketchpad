@@ -141,6 +141,79 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           }
           roughCanvas.draw(drawableCache.get(cacheKey));
           break;
+        case 'ellipse':
+          if (!drawableCache.has(cacheKey)) {
+            drawableCache.set(cacheKey, roughCanvas.generator.ellipse(x + width / 2, y + height / 2, width, height, options));
+          }
+          roughCanvas.draw(drawableCache.get(cacheKey));
+          break;
+        case 'diamond':
+          if (!drawableCache.has(cacheKey)) {
+            const centerX = x + width / 2;
+            const centerY = y + height / 2;
+            const points = [
+              [centerX, y], // top
+              [x + width, centerY], // right
+              [centerX, y + height], // bottom
+              [x, centerY], // left
+              [centerX, y] // close
+            ];
+            drawableCache.set(cacheKey, roughCanvas.generator.polygon(points, options));
+          }
+          roughCanvas.draw(drawableCache.get(cacheKey));
+          break;
+        case 'triangle':
+          if (!drawableCache.has(cacheKey)) {
+            const points = [
+              [x + width / 2, y], // top
+              [x + width, y + height], // bottom right
+              [x, y + height], // bottom left
+              [x + width / 2, y] // close
+            ];
+            drawableCache.set(cacheKey, roughCanvas.generator.polygon(points, options));
+          }
+          roughCanvas.draw(drawableCache.get(cacheKey));
+          break;
+        case 'star':
+          if (!drawableCache.has(cacheKey)) {
+            const centerX = x + width / 2;
+            const centerY = y + height / 2;
+            const outerRadius = Math.min(width, height) / 2;
+            const innerRadius = outerRadius * 0.4;
+            const points = [];
+
+            for (let i = 0; i < 10; i++) {
+              const angle = (i * Math.PI) / 5;
+              const radius = i % 2 === 0 ? outerRadius : innerRadius;
+              points.push([
+                centerX + radius * Math.cos(angle - Math.PI / 2),
+                centerY + radius * Math.sin(angle - Math.PI / 2)
+              ]);
+            }
+            points.push(points[0]); // close
+            drawableCache.set(cacheKey, roughCanvas.generator.polygon(points, options));
+          }
+          roughCanvas.draw(drawableCache.get(cacheKey));
+          break;
+        case 'hexagon':
+          if (!drawableCache.has(cacheKey)) {
+            const centerX = x + width / 2;
+            const centerY = y + height / 2;
+            const radius = Math.min(width, height) / 2;
+            const points = [];
+
+            for (let i = 0; i < 6; i++) {
+              const angle = (i * Math.PI) / 3;
+              points.push([
+                centerX + radius * Math.cos(angle),
+                centerY + radius * Math.sin(angle)
+              ]);
+            }
+            points.push(points[0]); // close
+            drawableCache.set(cacheKey, roughCanvas.generator.polygon(points, options));
+          }
+          roughCanvas.draw(drawableCache.get(cacheKey));
+          break;
         case 'line':
           if (!drawableCache.has(cacheKey)) {
             drawableCache.set(cacheKey, roughCanvas.generator.line(x, y, x + width, y + height, options));
@@ -267,7 +340,73 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       console.warn('Error drawing element:', error);
     }
 
-    // Selection bounds and resize handles removed - no visual selection indicator
+    // Draw selection bounds and resize handles for selected elements
+    if (isSelected && width > 0 && height > 0) {
+      const canvas = roughCanvas.canvas;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.save();
+
+        // Selection border with subtle animation
+        const time = Date.now() * 0.003;
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 3]);
+        ctx.lineDashOffset = time * 15;
+        ctx.strokeRect(x - 2, y - 2, width + 4, height + 4);
+
+        // Only show resize handles for resizable elements (not draw elements)
+        if (type !== 'draw') {
+          // Draw 8 resize handles
+          const handleSize = 8;
+          const handles = [
+            { x: x - handleSize / 2, y: y - handleSize / 2, type: 'nw' }, // top-left
+            { x: x + width / 2 - handleSize / 2, y: y - handleSize / 2, type: 'n' }, // top
+            { x: x + width - handleSize / 2, y: y - handleSize / 2, type: 'ne' }, // top-right
+            { x: x + width - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'e' }, // right
+            { x: x + width - handleSize / 2, y: y + height - handleSize / 2, type: 'se' }, // bottom-right
+            { x: x + width / 2 - handleSize / 2, y: y + height - handleSize / 2, type: 's' }, // bottom
+            { x: x - handleSize / 2, y: y + height - handleSize / 2, type: 'sw' }, // bottom-left
+            { x: x - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'w' }, // left
+          ];
+
+          // Draw handle backgrounds
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([]);
+
+          handles.forEach((handle) => {
+            // Draw handle with rounded corners (fallback for older browsers)
+            ctx.beginPath();
+            if (ctx.roundRect) {
+              ctx.roundRect(handle.x, handle.y, handleSize, handleSize, 2);
+            } else {
+              ctx.rect(handle.x, handle.y, handleSize, handleSize);
+            }
+            ctx.fill();
+            ctx.stroke();
+          });
+
+          // Add hover effect for current resize handle
+          if (resizeHandle) {
+            const currentHandle = handles.find(h => h.type === resizeHandle);
+            if (currentHandle) {
+              ctx.fillStyle = '#3b82f6';
+              ctx.beginPath();
+              if (ctx.roundRect) {
+                ctx.roundRect(currentHandle.x, currentHandle.y, handleSize, handleSize, 2);
+              } else {
+                ctx.rect(currentHandle.x, currentHandle.y, handleSize, handleSize);
+              }
+              ctx.fill();
+            }
+          }
+        }
+
+        ctx.restore();
+      }
+    }
   };
 
   const [currentCursor, setCurrentCursor] = useState('cursor-crosshair');

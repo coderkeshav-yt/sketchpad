@@ -8,6 +8,7 @@ import Canvas from './components/Canvas';
 const initialState: AppState = {
   elements: [],
   selectedElementId: null,
+  selectedElementIds: [],
   currentTool: 'select',
   strokeColor: '#000000',
   fillColor: 'transparent',
@@ -18,6 +19,15 @@ const initialState: AppState = {
   editingElementId: null,
   isResizing: false,
   resizeHandle: null,
+  zoom: 1,
+  panOffset: { x: 0, y: 0 },
+  history: [[]],
+  historyIndex: 0,
+  gridEnabled: true,
+  snapToGrid: false,
+  darkMode: false,
+  multiSelectMode: false,
+  clipboard: [],
 };
 
 function App() {
@@ -40,11 +50,199 @@ function App() {
   }, [state.elements]);
 
   const updateElements = useCallback((updater: (elements: DrawingElement[]) => DrawingElement[]) => {
-    setState(prev => ({
-      ...prev,
-      elements: updater(prev.elements)
-    }));
+    setState(prev => {
+      const newElements = updater(prev.elements);
+      const newHistory = prev.history.slice(0, prev.historyIndex + 1);
+      newHistory.push([...newElements]);
+      
+      return {
+        ...prev,
+        elements: newElements,
+        history: newHistory.slice(-50), // Keep last 50 states
+        historyIndex: Math.min(newHistory.length - 1, 49)
+      };
+    });
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      // Tool shortcuts
+      if (!e.ctrlKey && !e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 'v': handleToolChange('select'); break;
+          case 'r': handleToolChange('rectangle'); break;
+          case 'c': handleToolChange('circle'); break;
+          case 'd': handleToolChange('diamond'); break;
+          case 't': handleToolChange('triangle'); break;
+          case 's': handleToolChange('star'); break;
+          case 'h': handleToolChange('hexagon'); break;
+          case 'a': handleToolChange('arrow'); break;
+          case 'l': handleToolChange('line'); break;
+          case 'p': handleToolChange('draw'); break;
+          case 'e': handleToolChange('eraser'); break;
+          case 'g': 
+            if (e.shiftKey) {
+              handleToggleSnap();
+            } else {
+              handleToggleGrid();
+            }
+            break;
+          case 'delete':
+          case 'backspace':
+            handleDelete();
+            break;
+          case '0': handleZoomReset(); break;
+          case '+':
+          case '=': handleZoomIn(); break;
+          case '-': handleZoomOut(); break;
+        }
+      }
+
+      // Ctrl/Cmd shortcuts
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 'z':
+            e.preventDefault();
+            if (e.shiftKey) {
+              handleRedo();
+            } else {
+              handleUndo();
+            }
+            break;
+          case 'y':
+            e.preventDefault();
+            handleRedo();
+            break;
+          case 'c':
+            e.preventDefault();
+            handleCopy();
+            break;
+          case 'v':
+            e.preventDefault();
+            handlePaste();
+            break;
+          case 'd':
+            e.preventDefault();
+            handleDuplicate();
+            break;
+          case 'a':
+            e.preventDefault();
+            handleSelectAll();
+            break;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state.selectedElementId, state.elements]);
+
+  // New handler functions
+  const handleUndo = () => {
+    if (state.historyIndex > 0) {
+      setState(prev => ({
+        ...prev,
+        elements: prev.history[prev.historyIndex - 1],
+        historyIndex: prev.historyIndex - 1,
+        selectedElementId: null,
+      }));
+    }
+  };
+
+  const handleRedo = () => {
+    if (state.historyIndex < state.history.length - 1) {
+      setState(prev => ({
+        ...prev,
+        elements: prev.history[prev.historyIndex + 1],
+        historyIndex: prev.historyIndex + 1,
+        selectedElementId: null,
+      }));
+    }
+  };
+
+  const handleZoomIn = () => {
+    setState(prev => ({ ...prev, zoom: Math.min(prev.zoom * 1.2, 5) }));
+  };
+
+  const handleZoomOut = () => {
+    setState(prev => ({ ...prev, zoom: Math.max(prev.zoom / 1.2, 0.1) }));
+  };
+
+  const handleZoomReset = () => {
+    setState(prev => ({ ...prev, zoom: 1, panOffset: { x: 0, y: 0 } }));
+  };
+
+  const handleToggleGrid = () => {
+    setState(prev => ({ ...prev, gridEnabled: !prev.gridEnabled }));
+  };
+
+  const handleToggleSnap = () => {
+    setState(prev => ({ ...prev, snapToGrid: !prev.snapToGrid }));
+  };
+
+  const handleToggleDarkMode = () => {
+    setState(prev => ({ ...prev, darkMode: !prev.darkMode }));
+  };
+
+  const handleCopy = () => {
+    if (state.selectedElementId) {
+      const selectedElement = state.elements.find(el => el.id === state.selectedElementId);
+      if (selectedElement) {
+        setState(prev => ({ ...prev, clipboard: [selectedElement] }));
+      }
+    }
+  };
+
+  const handlePaste = () => {
+    if (state.clipboard.length > 0) {
+      const newElements = state.clipboard.map(el => ({
+        ...el,
+        id: generateId(),
+        x: el.x + 20,
+        y: el.y + 20,
+      }));
+      
+      updateElements(elements => [...elements, ...newElements]);
+      setState(prev => ({ ...prev, selectedElementId: newElements[0].id }));
+    }
+  };
+
+  const handleDelete = () => {
+    if (state.selectedElementId) {
+      updateElements(elements => elements.filter(el => el.id !== state.selectedElementId));
+      setState(prev => ({ ...prev, selectedElementId: null }));
+    }
+  };
+
+  const handleDuplicate = () => {
+    if (state.selectedElementId) {
+      const selectedElement = state.elements.find(el => el.id === state.selectedElementId);
+      if (selectedElement) {
+        const newElement = {
+          ...selectedElement,
+          id: generateId(),
+          x: selectedElement.x + 20,
+          y: selectedElement.y + 20,
+        };
+        
+        updateElements(elements => [...elements, newElement]);
+        setState(prev => ({ ...prev, selectedElementId: newElement.id }));
+      }
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (state.elements.length > 0) {
+      setState(prev => ({ 
+        ...prev, 
+        selectedElementIds: prev.elements.map(el => el.id),
+        multiSelectMode: true 
+      }));
+    }
+  };
 
   const handleToolChange = (tool: Tool) => {
     setState(prev => ({ ...prev, currentTool: tool, selectedElementId: null }));
@@ -365,17 +563,38 @@ function App() {
   };
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-gray-50">
+    <div className={`h-screen w-screen overflow-hidden ${
+      state.darkMode ? 'bg-gray-900' : 'bg-gray-50'
+    }`}>
       <Toolbar
         currentTool={state.currentTool}
         strokeColor={state.strokeColor}
         fillColor={state.fillColor}
         strokeWidth={state.strokeWidth}
+        zoom={state.zoom}
+        gridEnabled={state.gridEnabled}
+        snapToGrid={state.snapToGrid}
+        darkMode={state.darkMode}
         onToolChange={handleToolChange}
         onPropertyChange={handlePropertyChange}
         onExportPNG={handleExportPNG}
         onExportJSON={() => exportToJSON(state.elements)}
         onImportJSON={handleImportJSON}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onZoomReset={handleZoomReset}
+        onToggleGrid={handleToggleGrid}
+        onToggleSnap={handleToggleSnap}
+        onToggleDarkMode={handleToggleDarkMode}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onCopy={handleCopy}
+        onPaste={handlePaste}
+        onDelete={handleDelete}
+        onDuplicate={handleDuplicate}
+        onSelectAll={handleSelectAll}
+        canUndo={state.historyIndex > 0}
+        canRedo={state.historyIndex < state.history.length - 1}
       />
       
       <div className="h-full pt-16">
