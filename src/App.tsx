@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppState, DrawingElement, Tool, Point } from './types';
 import { saveToLocalStorage, loadFromLocalStorage, exportToJSON } from './utils/storage';
-import { generateId, isPointInElement, normalizeRect } from './utils/geometry';
+import { generateId, isPointInElement, normalizeRect, getResizeHandle, resizeElement } from './utils/geometry';
 import Toolbar from './components/Toolbar';
 import Canvas from './components/Canvas';
 
@@ -16,6 +16,8 @@ const initialState: AppState = {
   dragStart: null,
   isEditingText: false,
   editingElementId: null,
+  isResizing: false,
+  resizeHandle: null,
 };
 
 function App() {
@@ -87,11 +89,26 @@ function App() {
         .reverse()
         .find(el => isPointInElement({ x, y }, el));
 
-      setState(prev => ({
-        ...prev,
-        selectedElementId: clickedElement?.id || null,
-        dragStart: clickedElement ? { x, y } : null,
-      }));
+      if (clickedElement) {
+        // Check if clicking on a resize handle
+        const handle = getResizeHandle({ x, y }, clickedElement);
+        
+        setState(prev => ({
+          ...prev,
+          selectedElementId: clickedElement.id,
+          dragStart: { x, y },
+          isResizing: !!handle,
+          resizeHandle: handle,
+        }));
+      } else {
+        setState(prev => ({
+          ...prev,
+          selectedElementId: null,
+          dragStart: null,
+          isResizing: false,
+          resizeHandle: null,
+        }));
+      }
     } else if (state.currentTool === 'eraser') {
       // Find and delete element at click position
       const elementToDelete = state.elements
@@ -185,21 +202,157 @@ function App() {
         )
       );
     } else if (state.selectedElementId && state.currentTool === 'select') {
-      // Move selected element
       const dx = x - state.dragStart.x;
       const dy = y - state.dragStart.y;
 
-      updateElements(elements =>
-        elements.map(el =>
-          el.id === state.selectedElementId
-            ? { ...el, x: el.x + dx, y: el.y + dy }
-            : el
-        )
-      );
+      if (state.isResizing && state.resizeHandle) {
+        // Resize selected element
+        updateElements(elements =>
+          elements.map(el =>
+            el.id === state.selectedElementId
+              ? { ...el, ...resizeElement(el, state.resizeHandle!, dx, dy) }
+              : el
+          )
+        );
+      } else {
+        // Move selected element
+        updateElements(elements =>
+          elements.map(el =>
+            el.id === state.selectedElementId
+              ? { ...el, x: el.x + dx, y: el.y + dy }
+              : el
+          )
+        );
 
-      setState(prev => ({ ...prev, dragStart: { x, y } }));
+        setState(prev => ({ ...prev, dragStart: { x, y } }));
+      }
     }
   };
 
   const handleMouseUp = () => {
-    s
+    setState(prev => ({
+      ...prev,
+      isDrawing: false,
+      dragStart: null,
+      isResizing: false,
+      resizeHandle: null,
+    }));
+  };
+
+  const handleExportPNG = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const link = document.createElement('a');
+    link.download = 'drawing.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  };
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string);
+        setState(prev => ({ ...prev, elements: data }));
+      } catch (error) {
+        console.error('Failed to import JSON:', error);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleTextChange = (text: string) => {
+    if (state.editingElementId) {
+      updateElements(elements =>
+        elements.map(el =>
+          el.id === state.editingElementId
+            ? { ...el, text }
+            : el
+        )
+      );
+    }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Find text element at click position
+    const clickedElement = state.elements
+      .slice()
+      .reverse()
+      .find(el => el.type === 'text' && isPointInElement({ x, y }, el));
+
+    if (clickedElement) {
+      setState(prev => ({
+        ...prev,
+        isEditingText: true,
+        editingElementId: clickedElement.id,
+        selectedElementId: clickedElement.id,
+      }));
+    }
+  };
+
+  const handleMouseHover = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (state.currentTool !== 'select' || state.isDrawing || state.isResizing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // Find selected element and check for resize handles
+    const selectedElement = state.elements.find(el => el.id === state.selectedElementId);
+    if (selectedElement) {
+      const handle = getResizeHandle({ x, y }, selectedElement);
+      // The cursor will be handled in the Canvas component
+    }
+  };
+
+  return (
+    <div className="h-screen w-screen overflow-hidden bg-gray-50">
+      <Toolbar
+        currentTool={state.currentTool}
+        strokeColor={state.strokeColor}
+        fillColor={state.fillColor}
+        strokeWidth={state.strokeWidth}
+        onToolChange={handleToolChange}
+        onPropertyChange={handlePropertyChange}
+        onExportPNG={handleExportPNG}
+        onExportJSON={() => exportToJSON(state.elements)}
+        onImportJSON={handleImportJSON}
+      />
+      
+      <div className="h-full pt-16">
+        <Canvas
+          ref={canvasRef}
+          elements={state.elements}
+          selectedElementId={state.selectedElementId}
+          currentTool={state.currentTool}
+          isEditingText={state.isEditingText}
+          editingElementId={state.editingElementId}
+          isResizing={state.isResizing}
+          resizeHandle={state.resizeHandle}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onDoubleClick={handleDoubleClick}
+          onTextChange={handleTextChange}
+          onMouseHover={handleMouseHover}
+        />
+      </div>
+    </div>
+  );
+}
+
+export default App;

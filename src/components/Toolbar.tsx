@@ -129,4 +129,9 @@ const Toolbar: React.FC<ToolbarProps> = ({
             Export PNG
           </button>
         </div>
-      <
+      </div>
+    </div>
+  );
+};
+
+export default Toolbar;

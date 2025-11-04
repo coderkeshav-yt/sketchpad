@@ -1,6 +1,7 @@
-import React, { useEffect, forwardRef, useRef } from 'react';
+import React, { useEffect, forwardRef, useRef, useState } from 'react';
 import rough from 'roughjs';
 import { DrawingElement } from '../types';
+import { getResizeHandle, getCursorForResizeHandle } from '../utils/geometry';
 
 interface CanvasProps {
   elements: DrawingElement[];
@@ -8,11 +9,14 @@ interface CanvasProps {
   currentTool: string;
   isEditingText: boolean;
   editingElementId: string | null;
+  isResizing: boolean;
+  resizeHandle: string | null;
   onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseUp: () => void;
   onDoubleClick: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onTextChange: (text: string) => void;
+  onMouseHover: (e: React.MouseEvent<HTMLCanvasElement>) => void;
 }
 
 // Cache for rough.js drawable objects to prevent trembling
@@ -31,11 +35,14 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   currentTool,
   isEditingText,
   editingElementId,
+  isResizing,
+  resizeHandle,
   onMouseDown,
   onMouseMove,
   onMouseUp,
   onDoubleClick,
   onTextChange,
+  onMouseHover,
 }, ref) => {
   const animationFrameRef = useRef<number>();
 
@@ -210,13 +217,17 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         ctx.lineDashOffset = time * 20;
         ctx.strokeRect(x - 4, y - 4, width + 8, height + 8);
 
-        // Draw resize handles with smooth appearance
+        // Draw all 8 resize handles
         const handleSize = 8;
         const handles = [
-          [x - handleSize / 2, y - handleSize / 2], // top-left
-          [x + width - handleSize / 2, y - handleSize / 2], // top-right
-          [x - handleSize / 2, y + height - handleSize / 2], // bottom-left
-          [x + width - handleSize / 2, y + height - handleSize / 2], // bottom-right
+          { x: x - handleSize / 2, y: y - handleSize / 2, type: 'nw' }, // top-left
+          { x: x + width / 2 - handleSize / 2, y: y - handleSize / 2, type: 'n' }, // top
+          { x: x + width - handleSize / 2, y: y - handleSize / 2, type: 'ne' }, // top-right
+          { x: x + width - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'e' }, // right
+          { x: x + width - handleSize / 2, y: y + height - handleSize / 2, type: 'se' }, // bottom-right
+          { x: x + width / 2 - handleSize / 2, y: y + height - handleSize / 2, type: 's' }, // bottom
+          { x: x - handleSize / 2, y: y + height - handleSize / 2, type: 'sw' }, // bottom-left
+          { x: x - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'w' }, // left
         ];
 
         ctx.fillStyle = '#ffffff';
@@ -224,9 +235,9 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         ctx.lineWidth = 2;
         ctx.setLineDash([]);
 
-        handles.forEach(([hx, hy]) => {
-          ctx.fillRect(hx, hy, handleSize, handleSize);
-          ctx.strokeRect(hx, hy, handleSize, handleSize);
+        handles.forEach((handle) => {
+          ctx.fillRect(handle.x, handle.y, handleSize, handleSize);
+          ctx.strokeRect(handle.x, handle.y, handleSize, handleSize);
         });
 
         ctx.restore();
@@ -234,10 +245,88 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     }
   };
 
+  const [currentCursor, setCurrentCursor] = useState('cursor-crosshair');
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Update cursor based on hover position
+    if (currentTool === 'select' && selectedElementId && !isResizing) {
+      const canvas = ref as React.RefObject<HTMLCanvasElement>;
+      if (canvas.current) {
+        const rect = canvas.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        const selectedElement = elements.find(el => el.id === selectedElementId);
+        if (selectedElement) {
+          const handle = getResizeHandle({ x, y }, selectedElement);
+          const cursor = handle ? getCursorForResizeHandle(handle) : 'cursor-move';
+          setCurrentCursor(cursor);
+        }
+      }
+    } else {
+      const baseCursor = currentTool === 'eraser' ? 'cursor-pointer' : 
+                        currentTool === 'text' ? 'cursor-text' : 'cursor-crosshair';
+      setCurrentCursor(baseCursor);
+    }
+
+    onMouseMove(e);
+    onMouseHover(e);
+  };
+
   const getCursorStyle = () => {
-    switch (currentTool) {
-      case 'eraser':
-        return 'cursor-pointer';
-      case 'text':
-        return 'cursor-text';
-      def
+    return currentCursor;
+  };
+
+  const editingElement = elements.find(el => el.id === editingElementId);
+
+  return (
+    <div className="relative w-full h-full">
+      <canvas
+        ref={ref}
+        className={getCursorStyle()}
+        onMouseDown={onMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+        onDoubleClick={onDoubleClick}
+        style={{
+          backgroundColor: '#ffffff', // Pure white background like Excalidraw
+          imageRendering: 'auto',
+          WebkitFontSmoothing: 'antialiased',
+        }}
+      />
+
+      {/* Text input overlay */}
+      {isEditingText && editingElement && (
+        <textarea
+          autoFocus
+          value={editingElement.text || ''}
+          onChange={(e) => onTextChange(e.target.value)}
+          onBlur={() => {
+            // Handle blur if needed
+          }}
+          className="absolute border-2 border-blue-400 bg-transparent resize-none outline-none"
+          style={{
+            left: editingElement.x,
+            top: editingElement.y,
+            fontSize: `${Math.max(14, editingElement.strokeWidth * 6)}px`,
+            color: editingElement.strokeColor,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            minWidth: '100px',
+            minHeight: '20px',
+            padding: '2px',
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.currentTarget.blur();
+            }
+          }}
+        />
+      )}
+    </div>
+  );
+});
+
+Canvas.displayName = 'Canvas';
+
+export default Canvas;

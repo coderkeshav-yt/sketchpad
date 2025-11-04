@@ -20,6 +20,8 @@ export interface DrawingElement {
   seed?: number; // Add seed for consistent rough.js rendering
 }
 
+export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | null;
+
 export interface AppState {
   elements: DrawingElement[];
   selectedElementId: string | null;
@@ -28,4 +30,9 @@ export interface AppState {
   fillColor: string;
   strokeWidth: number;
   isDrawing: boolean;
-  dragStart: Point
+  dragStart: Point | null;
+  isEditingText: boolean;
+  editingElementId: string | null;
+  isResizing: boolean;
+  resizeHandle: ResizeHandle;
+}
