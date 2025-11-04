@@ -198,15 +198,68 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           }
           break;
         case 'draw':
-          // Draw free-hand path
+          // Draw smooth, filled free-hand path using native canvas for better quality
           if (element.points && element.points.length > 1) {
-            const pathCacheKey = `${cacheKey}-path-${element.points.length}`;
-            if (!drawableCache.has(pathCacheKey)) {
-              // Create a smooth curve through the points
-              const pathPoints = element.points.map(p => [p.x, p.y]);
-              drawableCache.set(pathCacheKey, roughCanvas.generator.curve(pathPoints, options));
+            const canvas = roughCanvas.canvas;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.save();
+
+              // Set up smooth, high-quality drawing
+              ctx.lineCap = 'round';
+              ctx.lineJoin = 'round';
+              ctx.strokeStyle = strokeColor;
+              ctx.lineWidth = strokeWidth;
+              ctx.globalCompositeOperation = 'source-over';
+
+              // Enable anti-aliasing for smoother lines
+              ctx.imageSmoothingEnabled = true;
+              ctx.imageSmoothingQuality = 'high';
+
+              // Create smooth path using quadratic curves
+              ctx.beginPath();
+              const points = element.points;
+
+              if (points.length === 1) {
+                // Single point - draw a circle
+                ctx.arc(points[0].x, points[0].y, strokeWidth / 2, 0, Math.PI * 2);
+                ctx.fill();
+              } else if (points.length === 2) {
+                // Two points - draw a line
+                ctx.moveTo(points[0].x, points[0].y);
+                ctx.lineTo(points[1].x, points[1].y);
+                ctx.stroke();
+              } else {
+                // Multiple points - create smooth curves
+                ctx.moveTo(points[0].x, points[0].y);
+
+                for (let i = 1; i < points.length - 1; i++) {
+                  const currentPoint = points[i];
+                  const nextPoint = points[i + 1];
+
+                  // Calculate control point for smooth curve
+                  const controlX = (currentPoint.x + nextPoint.x) / 2;
+                  const controlY = (currentPoint.y + nextPoint.y) / 2;
+
+                  ctx.quadraticCurveTo(currentPoint.x, currentPoint.y, controlX, controlY);
+                }
+
+                // Draw to the last point
+                const lastPoint = points[points.length - 1];
+                ctx.lineTo(lastPoint.x, lastPoint.y);
+                ctx.stroke();
+
+                // Add filled circles at each point for better coverage
+                ctx.fillStyle = strokeColor;
+                points.forEach(point => {
+                  ctx.beginPath();
+                  ctx.arc(point.x, point.y, strokeWidth / 3, 0, Math.PI * 2);
+                  ctx.fill();
+                });
+              }
+
+              ctx.restore();
             }
-            roughCanvas.draw(drawableCache.get(pathCacheKey));
           }
           break;
       }
