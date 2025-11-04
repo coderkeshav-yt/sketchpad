@@ -1,0 +1,31 @@
+export type Tool = 'select' | 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'eraser';
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface DrawingElement {
+  id: string;
+  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  strokeColor: string;
+  fillColor: string;
+  strokeWidth: number;
+  text?: string;
+  points?: Point[];
+  seed?: number; // Add seed for consistent rough.js rendering
+}
+
+export interface AppState {
+  elements: DrawingElement[];
+  selectedElementId: string | null;
+  currentTool: Tool;
+  strokeColor: string;
+  fillColor: string;
+  strokeWidth: number;
+  isDrawing: boolean;
+  dragStart: Point
