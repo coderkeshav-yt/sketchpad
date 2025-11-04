@@ -1,4 +1,4 @@
-export type Tool = 'select' | 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'eraser';
+export type Tool = 'select' | 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'eraser' | 'draw';
 
 export interface Point {
   x: number;
@@ -7,7 +7,7 @@ export interface Point {
 
 export interface DrawingElement {
   id: string;
-  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text';
+  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'draw';
   x: number;
   y: number;
   width: number;

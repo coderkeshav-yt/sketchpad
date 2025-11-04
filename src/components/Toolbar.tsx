@@ -30,6 +30,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
     { id: 'circle', label: 'Circle', icon: '○' },
     { id: 'arrow', label: 'Arrow', icon: '→' },
     { id: 'line', label: 'Line', icon: '/' },
+    { id: 'draw', label: 'Draw', icon: '✏️' },
     { id: 'text', label: 'Text', icon: 'T' },
     { id: 'eraser', label: 'Eraser', icon: '🧽' },
   ];

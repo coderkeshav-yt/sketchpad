@@ -153,3 +153,93 @@ export const resizeElement = (
 
   return { x: newX, y: newY, width: newWidth, height: newHeight };
 };
+
+export const smoothPath = (points: Point[]): Point[] => {
+  if (points.length < 3) return points;
+  
+  const smoothed: Point[] = [points[0]];
+  
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    
+    // Simple smoothing using average
+    smoothed.push({
+      x: (prev.x + curr.x + next.x) / 3,
+      y: (prev.y + curr.y + next.y) / 3,
+    });
+  }
+  
+  smoothed.push(points[points.length - 1]);
+  return smoothed;
+};
+
+export const getPathBounds = (points: Point[]) => {
+  if (points.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  
+  let minX = points[0].x;
+  let minY = points[0].y;
+  let maxX = points[0].x;
+  let maxY = points[0].y;
+  
+  points.forEach(point => {
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  });
+  
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+};
+
+export const isPointInPath = (point: Point, pathPoints: Point[], strokeWidth: number = 2): boolean => {
+  const tolerance = Math.max(strokeWidth / 2, 5);
+  
+  for (let i = 0; i < pathPoints.length - 1; i++) {
+    const p1 = pathPoints[i];
+    const p2 = pathPoints[i + 1];
+    
+    const distance = distanceToLineSegment(point, p1, p2);
+    if (distance <= tolerance) {
+      return true;
+    }
+  }
+  
+  return false;
+};
+
+const distanceToLineSegment = (point: Point, lineStart: Point, lineEnd: Point): number => {
+  const A = point.x - lineStart.x;
+  const B = point.y - lineStart.y;
+  const C = lineEnd.x - lineStart.x;
+  const D = lineEnd.y - lineStart.y;
+
+  const dot = A * C + B * D;
+  const lenSq = C * C + D * D;
+  
+  if (lenSq === 0) {
+    return Math.sqrt(A * A + B * B);
+  }
+  
+  let param = dot / lenSq;
+  
+  if (param < 0) {
+    return Math.sqrt(A * A + B * B);
+  } else if (param > 1) {
+    const dx = point.x - lineEnd.x;
+    const dy = point.y - lineEnd.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  } else {
+    const projX = lineStart.x + param * C;
+    const projY = lineStart.y + param * D;
+    const dx = point.x - projX;
+    const dy = point.y - projY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+};

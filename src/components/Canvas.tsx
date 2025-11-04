@@ -112,8 +112,8 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   const drawElement = (roughCanvas: any, element: DrawingElement, isSelected: boolean) => {
     const { x, y, width, height, strokeColor, fillColor, strokeWidth, type, id, seed } = element;
 
-    // Skip drawing if element has no dimensions (except for text)
-    if (type !== 'text' && (width === 0 || height === 0)) return;
+    // Skip drawing if element has no dimensions (except for text and draw)
+    if (type !== 'text' && type !== 'draw' && (width === 0 || height === 0)) return;
 
     const options = {
       stroke: strokeColor,
@@ -197,13 +197,25 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             ctx.fillText(element.text || 'Text', x, y);
           }
           break;
+        case 'draw':
+          // Draw free-hand path
+          if (element.points && element.points.length > 1) {
+            const pathCacheKey = `${cacheKey}-path-${element.points.length}`;
+            if (!drawableCache.has(pathCacheKey)) {
+              // Create a smooth curve through the points
+              const pathPoints = element.points.map(p => [p.x, p.y]);
+              drawableCache.set(pathCacheKey, roughCanvas.generator.curve(pathPoints, options));
+            }
+            roughCanvas.draw(drawableCache.get(pathCacheKey));
+          }
+          break;
       }
     } catch (error) {
       console.warn('Error drawing element:', error);
     }
 
     // Draw selection bounds with smooth animation
-    if (isSelected) {
+    if (isSelected && width > 0 && height > 0) {
       const canvas = roughCanvas.canvas;
       const ctx = canvas.getContext('2d');
       if (ctx) {
@@ -217,28 +229,31 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         ctx.lineDashOffset = time * 20;
         ctx.strokeRect(x - 4, y - 4, width + 8, height + 8);
 
-        // Draw all 8 resize handles
-        const handleSize = 8;
-        const handles = [
-          { x: x - handleSize / 2, y: y - handleSize / 2, type: 'nw' }, // top-left
-          { x: x + width / 2 - handleSize / 2, y: y - handleSize / 2, type: 'n' }, // top
-          { x: x + width - handleSize / 2, y: y - handleSize / 2, type: 'ne' }, // top-right
-          { x: x + width - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'e' }, // right
-          { x: x + width - handleSize / 2, y: y + height - handleSize / 2, type: 'se' }, // bottom-right
-          { x: x + width / 2 - handleSize / 2, y: y + height - handleSize / 2, type: 's' }, // bottom
-          { x: x - handleSize / 2, y: y + height - handleSize / 2, type: 'sw' }, // bottom-left
-          { x: x - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'w' }, // left
-        ];
+        // Only show resize handles for non-draw elements (draw elements are harder to resize meaningfully)
+        if (type !== 'draw') {
+          // Draw all 8 resize handles
+          const handleSize = 8;
+          const handles = [
+            { x: x - handleSize / 2, y: y - handleSize / 2, type: 'nw' }, // top-left
+            { x: x + width / 2 - handleSize / 2, y: y - handleSize / 2, type: 'n' }, // top
+            { x: x + width - handleSize / 2, y: y - handleSize / 2, type: 'ne' }, // top-right
+            { x: x + width - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'e' }, // right
+            { x: x + width - handleSize / 2, y: y + height - handleSize / 2, type: 'se' }, // bottom-right
+            { x: x + width / 2 - handleSize / 2, y: y + height - handleSize / 2, type: 's' }, // bottom
+            { x: x - handleSize / 2, y: y + height - handleSize / 2, type: 'sw' }, // bottom-left
+            { x: x - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'w' }, // left
+          ];
 
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([]);
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([]);
 
-        handles.forEach((handle) => {
-          ctx.fillRect(handle.x, handle.y, handleSize, handleSize);
-          ctx.strokeRect(handle.x, handle.y, handleSize, handleSize);
-        });
+          handles.forEach((handle) => {
+            ctx.fillRect(handle.x, handle.y, handleSize, handleSize);
+            ctx.strokeRect(handle.x, handle.y, handleSize, handleSize);
+          });
+        }
 
         ctx.restore();
       }
@@ -255,7 +270,7 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         const rect = canvas.current.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        
+
         const selectedElement = elements.find(el => el.id === selectedElementId);
         if (selectedElement) {
           const handle = getResizeHandle({ x, y }, selectedElement);
@@ -264,8 +279,9 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         }
       }
     } else {
-      const baseCursor = currentTool === 'eraser' ? 'cursor-pointer' : 
-                        currentTool === 'text' ? 'cursor-text' : 'cursor-crosshair';
+      const baseCursor = currentTool === 'eraser' ? 'cursor-pointer' :
+        currentTool === 'text' ? 'cursor-text' :
+          currentTool === 'draw' ? 'cursor-crosshair' : 'cursor-crosshair';
       setCurrentCursor(baseCursor);
     }
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AppState, DrawingElement, Tool, Point } from './types';
 import { saveToLocalStorage, loadFromLocalStorage, exportToJSON } from './utils/storage';
-import { generateId, isPointInElement, normalizeRect, getResizeHandle, resizeElement } from './utils/geometry';
+import { generateId, isPointInElement, normalizeRect, getResizeHandle, resizeElement, getPathBounds, isPointInPath } from './utils/geometry';
 import Toolbar from './components/Toolbar';
 import Canvas from './components/Canvas';
 
@@ -87,7 +87,12 @@ function App() {
       const clickedElement = state.elements
         .slice()
         .reverse()
-        .find(el => isPointInElement({ x, y }, el));
+        .find(el => {
+          if (el.type === 'draw' && el.points) {
+            return isPointInPath({ x, y }, el.points, el.strokeWidth);
+          }
+          return isPointInElement({ x, y }, el);
+        });
 
       if (clickedElement) {
         // Check if clicking on a resize handle
@@ -142,6 +147,29 @@ function App() {
         isEditingText: true,
         editingElementId: newElement.id,
       }));
+    } else if (state.currentTool === 'draw') {
+      // Start free-hand drawing
+      const newElement: DrawingElement = {
+        id: generateId(),
+        type: 'draw',
+        x,
+        y,
+        width: 0,
+        height: 0,
+        strokeColor: state.strokeColor,
+        fillColor: 'transparent',
+        strokeWidth: state.strokeWidth,
+        seed: Math.floor(Math.random() * 1000000),
+        points: [{ x, y }],
+      };
+
+      updateElements(elements => [...elements, newElement]);
+      setState(prev => ({
+        ...prev,
+        isDrawing: true,
+        dragStart: { x, y },
+        selectedElementId: newElement.id,
+      }));
     } else {
       // Start drawing new element
       const newElement: DrawingElement = {
@@ -191,16 +219,33 @@ function App() {
     if (!state.dragStart) return;
 
     if (state.isDrawing && state.selectedElementId) {
-      // Update drawing element
-      const normalized = normalizeRect(state.dragStart.x, state.dragStart.y, x, y);
+      const selectedElement = state.elements.find(el => el.id === state.selectedElementId);
       
-      updateElements(elements =>
-        elements.map(el =>
-          el.id === state.selectedElementId
-            ? { ...el, ...normalized }
-            : el
-        )
-      );
+      if (selectedElement?.type === 'draw') {
+        // Add point to free-hand drawing
+        updateElements(elements =>
+          elements.map(el =>
+            el.id === state.selectedElementId
+              ? {
+                  ...el,
+                  points: [...(el.points || []), { x, y }],
+                  ...getPathBounds([...(el.points || []), { x, y }])
+                }
+              : el
+          )
+        );
+      } else {
+        // Update other drawing elements
+        const normalized = normalizeRect(state.dragStart.x, state.dragStart.y, x, y);
+        
+        updateElements(elements =>
+          elements.map(el =>
+            el.id === state.selectedElementId
+              ? { ...el, ...normalized }
+              : el
+          )
+        );
+      }
     } else if (state.selectedElementId && state.currentTool === 'select') {
       const dx = x - state.dragStart.x;
       const dy = y - state.dragStart.y;
