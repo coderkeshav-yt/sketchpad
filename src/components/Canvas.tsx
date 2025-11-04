@@ -214,50 +214,7 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       console.warn('Error drawing element:', error);
     }
 
-    // Draw selection bounds with smooth animation
-    if (isSelected && width > 0 && height > 0) {
-      const canvas = roughCanvas.canvas;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.save();
-
-        // Animated selection border
-        const time = Date.now() * 0.005;
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 4]);
-        ctx.lineDashOffset = time * 20;
-        ctx.strokeRect(x - 4, y - 4, width + 8, height + 8);
-
-        // Only show resize handles for non-draw elements (draw elements are harder to resize meaningfully)
-        if (type !== 'draw') {
-          // Draw all 8 resize handles
-          const handleSize = 8;
-          const handles = [
-            { x: x - handleSize / 2, y: y - handleSize / 2, type: 'nw' }, // top-left
-            { x: x + width / 2 - handleSize / 2, y: y - handleSize / 2, type: 'n' }, // top
-            { x: x + width - handleSize / 2, y: y - handleSize / 2, type: 'ne' }, // top-right
-            { x: x + width - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'e' }, // right
-            { x: x + width - handleSize / 2, y: y + height - handleSize / 2, type: 'se' }, // bottom-right
-            { x: x + width / 2 - handleSize / 2, y: y + height - handleSize / 2, type: 's' }, // bottom
-            { x: x - handleSize / 2, y: y + height - handleSize / 2, type: 'sw' }, // bottom-left
-            { x: x - handleSize / 2, y: y + height / 2 - handleSize / 2, type: 'w' }, // left
-          ];
-
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#3b82f6';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([]);
-
-          handles.forEach((handle) => {
-            ctx.fillRect(handle.x, handle.y, handleSize, handleSize);
-            ctx.strokeRect(handle.x, handle.y, handleSize, handleSize);
-          });
-        }
-
-        ctx.restore();
-      }
-    }
+    // Selection bounds and resize handles removed - no visual selection indicator
   };
 
   const [currentCursor, setCurrentCursor] = useState('cursor-crosshair');
