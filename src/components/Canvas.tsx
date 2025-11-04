@@ -238,7 +238,7 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
     } else {
       const baseCursor = currentTool === 'eraser' ? 'cursor-pointer' :
         currentTool === 'text' ? 'cursor-text' :
-          currentTool === 'draw' ? 'cursor-crosshair' : 'cursor-crosshair';
+          currentTool === 'draw' ? 'cursor-default' : 'cursor-crosshair';
       setCurrentCursor(baseCursor);
     }
 
