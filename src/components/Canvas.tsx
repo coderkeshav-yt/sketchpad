@@ -340,8 +340,8 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       console.warn('Error drawing element:', error);
     }
 
-    // Draw selection bounds and resize handles for selected elements
-    if (isSelected && width > 0 && height > 0) {
+    // Draw selection bounds and resize handles for selected elements (only in select mode)
+    if (isSelected && width > 0 && height > 0 && currentTool === 'select') {
       const canvas = roughCanvas.canvas;
       const ctx = canvas.getContext('2d');
       if (ctx) {
