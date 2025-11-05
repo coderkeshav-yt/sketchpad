@@ -63,3 +63,29 @@ src/
 ├── App.tsx             # Main application component
 └── main.tsx            # Application entry point
 ```
+
+## Project Structure
+
+```
+.
+├── index.html             # Vite index HTML
+├── package.json           # npm manifest & scripts
+├── postcss.config.js      # PostCSS config for Tailwind
+├── tailwind.config.js     # Tailwind config
+├── tsconfig.json          # TypeScript config
+├── tsconfig.node.json     # TypeScript config for Node tooling
+├── vite.config.ts         # Vite config
+├── vercel.json            # Vercel deployment config
+├── README.md              # Project README
+└── src/
+	├── App.tsx            # Main application component
+	├── main.tsx           # App entry & bootstrapping
+	├── index.css          # Global CSS (Tailwind imports)
+	├── types.ts           # Shared TypeScript types
+	├── components/
+	│   ├── Canvas.tsx     # Canvas for drawing and interaction
+	│   └── Toolbar.tsx    # Toolbar with tools and controls
+	└── utils/
+		├── geometry.ts    # Geometry helpers
+		└── storage.ts     # Local storage helpers
+```
