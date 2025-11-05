@@ -34,8 +34,8 @@ export const normalizeRect = (startX: number, startY: number, endX: number, endY
 
 export const getResizeHandle = (point: Point, element: DrawingElement): string | null => {
   const { x, y, width, height } = element;
-  const handleSize = 8;
-  const tolerance = handleSize / 2;
+  const handleSize = 10; // Slightly larger handles for easier grabbing
+  const tolerance = handleSize; // Increased tolerance for better UX
 
   // Check corners first
   if (Math.abs(point.x - x) <= tolerance && Math.abs(point.y - y) <= tolerance) {
@@ -94,6 +94,18 @@ export const resizeElement = (
   deltaY: number
 ): Partial<DrawingElement> => {
   const { x, y, width, height } = element;
+  
+  // Apply much lower sensitivity factor to make resizing much less aggressive
+  const sensitivity = 0.3; // Reduce sensitivity by 70% - much more controlled
+  const adjustedDeltaX = deltaX * sensitivity;
+  const adjustedDeltaY = deltaY * sensitivity;
+  
+  // Add minimum movement threshold to prevent tiny changes
+  const threshold = 5; // Increased threshold to prevent micro-movements
+  if (Math.abs(adjustedDeltaX) < threshold && Math.abs(adjustedDeltaY) < threshold) {
+    return { x, y, width, height }; // No change if movement is too small
+  }
+  
   let newX = x;
   let newY = y;
   let newWidth = width;
@@ -101,57 +113,77 @@ export const resizeElement = (
 
   switch (handle) {
     case 'nw':
-      newX = x + deltaX;
-      newY = y + deltaY;
-      newWidth = width - deltaX;
-      newHeight = height - deltaY;
+      newX = x + adjustedDeltaX;
+      newY = y + adjustedDeltaY;
+      newWidth = width - adjustedDeltaX;
+      newHeight = height - adjustedDeltaY;
       break;
     case 'ne':
-      newY = y + deltaY;
-      newWidth = width + deltaX;
-      newHeight = height - deltaY;
+      newY = y + adjustedDeltaY;
+      newWidth = width + adjustedDeltaX;
+      newHeight = height - adjustedDeltaY;
       break;
     case 'sw':
-      newX = x + deltaX;
-      newWidth = width - deltaX;
-      newHeight = height + deltaY;
+      newX = x + adjustedDeltaX;
+      newWidth = width - adjustedDeltaX;
+      newHeight = height + adjustedDeltaY;
       break;
     case 'se':
-      newWidth = width + deltaX;
-      newHeight = height + deltaY;
+      newWidth = width + adjustedDeltaX;
+      newHeight = height + adjustedDeltaY;
       break;
     case 'n':
-      newY = y + deltaY;
-      newHeight = height - deltaY;
+      newY = y + adjustedDeltaY;
+      newHeight = height - adjustedDeltaY;
       break;
     case 's':
-      newHeight = height + deltaY;
+      newHeight = height + adjustedDeltaY;
       break;
     case 'w':
-      newX = x + deltaX;
-      newWidth = width - deltaX;
+      newX = x + adjustedDeltaX;
+      newWidth = width - adjustedDeltaX;
       break;
     case 'e':
-      newWidth = width + deltaX;
+      newWidth = width + adjustedDeltaX;
       break;
   }
 
-  // Ensure minimum size
-  const minSize = 10;
+  // Ensure minimum and maximum sizes for better UX
+  const minSize = 15; // Slightly larger minimum for better usability
+  const maxSize = 2000; // Prevent elements from becoming too large
+  
+  // Apply size constraints
   if (newWidth < minSize) {
     if (handle.includes('w')) {
       newX = x + width - minSize;
     }
     newWidth = minSize;
+  } else if (newWidth > maxSize) {
+    if (handle.includes('w')) {
+      newX = x + width - maxSize;
+    }
+    newWidth = maxSize;
   }
+  
   if (newHeight < minSize) {
     if (handle.includes('n')) {
       newY = y + height - minSize;
     }
     newHeight = minSize;
+  } else if (newHeight > maxSize) {
+    if (handle.includes('n')) {
+      newY = y + height - maxSize;
+    }
+    newHeight = maxSize;
   }
 
-  return { x: newX, y: newY, width: newWidth, height: newHeight };
+  // Round values to prevent sub-pixel positioning
+  return { 
+    x: Math.round(newX), 
+    y: Math.round(newY), 
+    width: Math.round(newWidth), 
+    height: Math.round(newHeight) 
+  };
 };
 
 export const smoothPath = (points: Point[]): Point[] => {

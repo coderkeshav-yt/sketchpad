@@ -100,6 +100,18 @@ function App() {
           case '+':
           case '=': handleZoomIn(); break;
           case '-': handleZoomOut(); break;
+          case 'arrowup': 
+            setState(prev => ({ ...prev, panOffset: { x: prev.panOffset.x, y: prev.panOffset.y + 20 } }));
+            break;
+          case 'arrowdown':
+            setState(prev => ({ ...prev, panOffset: { x: prev.panOffset.x, y: prev.panOffset.y - 20 } }));
+            break;
+          case 'arrowleft':
+            setState(prev => ({ ...prev, panOffset: { x: prev.panOffset.x + 20, y: prev.panOffset.y } }));
+            break;
+          case 'arrowright':
+            setState(prev => ({ ...prev, panOffset: { x: prev.panOffset.x - 20, y: prev.panOffset.y } }));
+            break;
         }
       }
 
@@ -364,6 +376,41 @@ function App() {
     }
   };
 
+  // Handle wheel events for zooming and panning (throttled for performance)
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    
+    if (e.ctrlKey || e.metaKey) {
+      // Zoom with Ctrl/Cmd + wheel
+      const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05; // Smaller increments for smoother zoom
+      const newZoom = Math.max(0.1, Math.min(3, state.zoom * zoomFactor));
+      
+      setState(prev => ({ ...prev, zoom: newZoom }));
+    } else if (e.shiftKey) {
+      // Horizontal pan with Shift + wheel
+      setState(prev => ({
+        ...prev,
+        panOffset: {
+          x: prev.panOffset.x - e.deltaY * 0.3,
+          y: prev.panOffset.y
+        }
+      }));
+    } else {
+      // Vertical pan with wheel
+      setState(prev => ({
+        ...prev,
+        panOffset: {
+          x: prev.panOffset.x - e.deltaX * 0.3,
+          y: prev.panOffset.y - e.deltaY * 0.3
+        }
+      }));
+    }
+  }, [state.zoom]);
+
+  // Handle middle mouse button panning
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+
   const handleToolChange = (tool: Tool) => {
     setState(prev => ({ ...prev, currentTool: tool, selectedElementId: null }));
   };
@@ -388,8 +435,21 @@ function App() {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Simplified coordinate transformation
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    // Apply zoom and pan transformation
+    const x = (screenX / state.zoom) - state.panOffset.x;
+    const y = (screenY / state.zoom) - state.panOffset.y;
+
+    // Handle middle mouse button for panning
+    if (e.button === 1) {
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: screenX, y: screenY });
+      return;
+    }
 
     // Stop text editing if clicking elsewhere
     if (state.isEditingText) {
@@ -518,8 +578,29 @@ function App() {
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    
+    // Handle panning first
+    if (isPanning && panStart) {
+      const deltaX = (screenX - panStart.x) / state.zoom;
+      const deltaY = (screenY - panStart.y) / state.zoom;
+      
+      setState(prev => ({
+        ...prev,
+        panOffset: {
+          x: prev.panOffset.x + deltaX,
+          y: prev.panOffset.y + deltaY
+        }
+      }));
+      
+      setPanStart({ x: screenX, y: screenY });
+      return;
+    }
+
+    // Apply coordinate transformation for drawing operations
+    const x = (screenX / state.zoom) - state.panOffset.x;
+    const y = (screenY / state.zoom) - state.panOffset.y;
 
     // Handle eraser tool
     if (state.currentTool === 'eraser' && e.buttons === 1) {
@@ -569,14 +650,27 @@ function App() {
       const dy = y - state.dragStart.y;
 
       if (state.isResizing && state.resizeHandle) {
-        // Resize selected element
-        updateElements(elements =>
-          elements.map(el =>
-            el.id === state.selectedElementId
-              ? { ...el, ...resizeElement(el, state.resizeHandle!, dx, dy) }
-              : el
-          )
-        );
+        // Resize selected element with improved control
+        const selectedElement = state.elements.find(el => el.id === state.selectedElementId);
+        if (selectedElement) {
+          // Apply grid snapping if enabled
+          let adjustedDx = dx;
+          let adjustedDy = dy;
+          
+          if (state.snapToGrid) {
+            const gridSize = 20;
+            adjustedDx = Math.round(dx / gridSize) * gridSize;
+            adjustedDy = Math.round(dy / gridSize) * gridSize;
+          }
+          
+          updateElements(elements =>
+            elements.map(el =>
+              el.id === state.selectedElementId
+                ? { ...el, ...resizeElement(el, state.resizeHandle!, adjustedDx, adjustedDy) }
+                : el
+            )
+          );
+        }
       } else {
         // Move selected element
         updateElements(elements =>
@@ -600,6 +694,10 @@ function App() {
       isResizing: false,
       resizeHandle: null,
     }));
+    
+    // Stop panning
+    setIsPanning(false);
+    setPanStart(null);
   };
 
   const handleExportPNG = () => {
@@ -826,12 +924,15 @@ function App() {
           resizeHandle={state.resizeHandle}
           gridEnabled={state.gridEnabled}
           darkMode={state.darkMode}
+          zoom={state.zoom}
+          panOffset={state.panOffset}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onDoubleClick={handleDoubleClick}
           onTextChange={handleTextChange}
           onMouseHover={handleMouseHover}
+          onWheel={handleWheel}
         />
       </div>
 

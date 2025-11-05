@@ -13,12 +13,15 @@ interface CanvasProps {
   resizeHandle: string | null;
   gridEnabled: boolean;
   darkMode: boolean;
+  zoom: number;
+  panOffset: { x: number; y: number };
   onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseUp: () => void;
   onDoubleClick: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onTextChange: (text: string) => void;
   onMouseHover: (e: React.MouseEvent<HTMLCanvasElement>) => void;
+  onWheel: (e: React.WheelEvent<HTMLCanvasElement>) => void;
 }
 
 // Cache for rough.js drawable objects to prevent trembling
@@ -41,12 +44,15 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   resizeHandle,
   gridEnabled,
   darkMode,
+  zoom,
+  panOffset,
   onMouseDown,
   onMouseMove,
   onMouseUp,
   onDoubleClick,
   onTextChange,
   onMouseHover,
+  onWheel,
 }, ref) => {
   const animationFrameRef = useRef<number>();
 
@@ -64,16 +70,21 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       const ctx = canvas.current!.getContext('2d');
       if (!ctx) return;
 
-      // Set canvas size
+      // Set canvas size - keep it simple for performance
       canvas.current!.width = window.innerWidth;
       canvas.current!.height = window.innerHeight - 80; // Account for toolbar
 
       // Clear canvas
       ctx.clearRect(0, 0, canvas.current!.width, canvas.current!.height);
 
-      // Draw grid background if enabled
+      // Apply zoom and pan transformations
+      ctx.save();
+      ctx.scale(zoom, zoom);
+      ctx.translate(panOffset.x, panOffset.y);
+
+      // Draw simple grid background if enabled
       if (gridEnabled) {
-        drawGrid(ctx, canvas.current!.width, canvas.current!.height);
+        drawSimpleGrid(ctx, canvas.current!.width / zoom, canvas.current!.height / zoom);
       }
 
       // Initialize rough.js
@@ -86,6 +97,8 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       elements.forEach((element) => {
         drawElement(roughCanvas, element, element.id === selectedElementId);
       });
+
+      ctx.restore();
     });
 
     return () => {
@@ -93,45 +106,29 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [elements, selectedElementId, ref]);
+  }, [elements, selectedElementId, gridEnabled, darkMode, zoom, panOffset, isResizing]);
 
-  const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const gridSize = 20; // Excalidraw's grid spacing
+  const drawSimpleGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    const gridSize = 20;
     ctx.save();
 
     // Adapt colors for dark/light mode
     const dotColor = darkMode ? '#374151' : '#e5e7eb';
-    const majorDotColor = darkMode ? '#4b5563' : '#d1d5db';
-
-    // Primary grid dots
+    
     ctx.fillStyle = dotColor;
     ctx.globalAlpha = darkMode ? 0.6 : 0.8;
 
-    // Calculate starting points to center the grid
-    const startX = (width % gridSize) / 2;
-    const startY = (height % gridSize) / 2;
+    // Draw a simple grid within visible area only for performance
+    const startX = Math.max(0, Math.floor(-panOffset.x / gridSize) * gridSize);
+    const endX = Math.min(width, startX + width + gridSize * 2);
+    const startY = Math.max(0, Math.floor(-panOffset.y / gridSize) * gridSize);
+    const endY = Math.min(height, startY + height + gridSize * 2);
 
-    // Draw dots at grid intersections with Excalidraw's exact pattern
-    for (let x = startX; x <= width; x += gridSize) {
-      for (let y = startY; y <= height; y += gridSize) {
+    // Draw dots at grid intersections
+    for (let x = startX; x <= endX; x += gridSize) {
+      for (let y = startY; y <= endY; y += gridSize) {
         ctx.beginPath();
         ctx.arc(x, y, 1, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Add subtle secondary grid (every 5th line) for better reference
-    ctx.fillStyle = majorDotColor;
-    ctx.globalAlpha = darkMode ? 0.4 : 0.5;
-    
-    const majorGridSize = gridSize * 5; // Every 5th line
-    const majorStartX = (width % majorGridSize) / 2;
-    const majorStartY = (height % majorGridSize) / 2;
-
-    for (let x = majorStartX; x <= width; x += majorGridSize) {
-      for (let y = majorStartY; y <= height; y += majorGridSize) {
-        ctx.beginPath();
-        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -366,19 +363,33 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           }
           break;
         case 'image':
-          // Draw image element
+          // Draw image element with caching to prevent blinking
           if (element.imageData) {
             const canvas = roughCanvas.canvas;
             const ctx = canvas.getContext('2d');
             if (ctx) {
-              const img = new Image();
-              img.onload = () => {
+              // Use image cache to prevent blinking
+              const imageCacheKey = `img-${element.id}`;
+              if (!drawableCache.has(imageCacheKey)) {
+                const img = new Image();
+                img.onload = () => {
+                  drawableCache.set(imageCacheKey, img);
+                  // Force re-render when image loads
+                  const event = new CustomEvent('imageLoaded');
+                  canvas.dispatchEvent(event);
+                };
+                img.src = element.imageData;
+                // Store loading state
+                drawableCache.set(imageCacheKey, 'loading');
+              }
+              
+              const cachedImg = drawableCache.get(imageCacheKey);
+              if (cachedImg && cachedImg !== 'loading') {
                 ctx.save();
                 ctx.globalAlpha = element.opacity || 1;
-                ctx.drawImage(img, x, y, width, height);
+                ctx.drawImage(cachedImg, x, y, width, height);
                 ctx.restore();
-              };
-              img.src = element.imageData;
+              }
             }
           }
           break;
@@ -401,11 +412,39 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         ctx.setLineDash([6, 3]);
         ctx.lineDashOffset = time * 15;
         ctx.strokeRect(x - 2, y - 2, width + 4, height + 4);
+        
+        // Show size info while resizing
+        if (isResizing) {
+          ctx.save();
+          ctx.fillStyle = darkMode ? '#1f2937' : '#ffffff';
+          ctx.strokeStyle = '#3b82f6';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([]);
+          
+          const sizeText = `${Math.round(width)} × ${Math.round(height)}`;
+          ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+          const textMetrics = ctx.measureText(sizeText);
+          const textWidth = textMetrics.width;
+          const textHeight = 16;
+          
+          // Position the size indicator above the element
+          const textX = x + width / 2 - textWidth / 2;
+          const textY = y - 20;
+          
+          // Draw background
+          ctx.fillRect(textX - 4, textY - textHeight + 2, textWidth + 8, textHeight + 4);
+          ctx.strokeRect(textX - 4, textY - textHeight + 2, textWidth + 8, textHeight + 4);
+          
+          // Draw text
+          ctx.fillStyle = darkMode ? '#ffffff' : '#1f2937';
+          ctx.fillText(sizeText, textX, textY);
+          ctx.restore();
+        }
 
         // Only show resize handles for resizable elements (not draw elements)
         if (type !== 'draw') {
-          // Draw 8 resize handles
-          const handleSize = 8;
+          // Draw 8 resize handles with improved visibility
+          const handleSize = 10; // Larger handles for better UX
           const handles = [
             { x: x - handleSize / 2, y: y - handleSize / 2, type: 'nw' }, // top-left
             { x: x + width / 2 - handleSize / 2, y: y - handleSize / 2, type: 'n' }, // top
@@ -464,8 +503,12 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       const canvas = ref as React.RefObject<HTMLCanvasElement>;
       if (canvas.current) {
         const rect = canvas.current.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        
+        // Apply coordinate transformation
+        const x = (screenX / zoom) - panOffset.x;
+        const y = (screenY / zoom) - panOffset.y;
 
         const selectedElement = elements.find(el => el.id === selectedElementId);
         if (selectedElement) {
@@ -501,10 +544,13 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
         onDoubleClick={onDoubleClick}
+        onWheel={onWheel}
         style={{
           backgroundColor: darkMode ? '#1f2937' : '#ffffff',
           imageRendering: 'auto',
           WebkitFontSmoothing: 'antialiased',
+          width: '100%',
+          height: '100%',
         }}
       />
 
@@ -519,14 +565,16 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
           }}
           className="absolute border-2 border-blue-400 bg-transparent resize-none outline-none"
           style={{
-            left: editingElement.x,
-            top: editingElement.y,
-            fontSize: `${Math.max(14, editingElement.strokeWidth * 6)}px`,
+            left: (editingElement.x + panOffset.x) * zoom,
+            top: (editingElement.y + panOffset.y) * zoom,
+            fontSize: `${Math.max(14, editingElement.strokeWidth * 6) * zoom}px`,
             color: editingElement.strokeColor,
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            minWidth: '100px',
-            minHeight: '20px',
+            minWidth: `${100 * zoom}px`,
+            minHeight: `${20 * zoom}px`,
             padding: '2px',
+            transform: `scale(${1/zoom})`,
+            transformOrigin: 'top left',
           }}
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
