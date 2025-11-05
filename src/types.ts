@@ -7,7 +7,7 @@ export interface Point {
 
 export interface DrawingElement {
   id: string;
-  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'draw' | 'diamond' | 'ellipse' | 'star' | 'triangle' | 'hexagon';
+  type: 'rectangle' | 'circle' | 'arrow' | 'line' | 'text' | 'draw' | 'diamond' | 'ellipse' | 'star' | 'triangle' | 'hexagon' | 'image';
   x: number;
   y: number;
   width: number;
@@ -28,6 +28,9 @@ export interface DrawingElement {
   strokeStyle?: 'solid' | 'dashed' | 'dotted';
   roughness?: number;
   bowing?: number;
+  imageData?: string; // Base64 image data
+  originalWidth?: number;
+  originalHeight?: number;
 }
 
 export type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w' | null;

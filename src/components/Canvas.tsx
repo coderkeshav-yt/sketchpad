@@ -11,6 +11,8 @@ interface CanvasProps {
   editingElementId: string | null;
   isResizing: boolean;
   resizeHandle: string | null;
+  gridEnabled: boolean;
+  darkMode: boolean;
   onMouseDown: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseMove: (e: React.MouseEvent<HTMLCanvasElement>) => void;
   onMouseUp: () => void;
@@ -37,6 +39,8 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   editingElementId,
   isResizing,
   resizeHandle,
+  gridEnabled,
+  darkMode,
   onMouseDown,
   onMouseMove,
   onMouseUp,
@@ -67,8 +71,10 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
       // Clear canvas
       ctx.clearRect(0, 0, canvas.current!.width, canvas.current!.height);
 
-      // Draw grid background
-      drawGrid(ctx, canvas.current!.width, canvas.current!.height);
+      // Draw grid background if enabled
+      if (gridEnabled) {
+        drawGrid(ctx, canvas.current!.width, canvas.current!.height);
+      }
 
       // Initialize rough.js
       const roughCanvas = rough.canvas(canvas.current!);
@@ -90,18 +96,42 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
   }, [elements, selectedElementId, ref]);
 
   const drawGrid = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
-    const gridSize = 20; // Same as Excalidraw's grid spacing
+    const gridSize = 20; // Excalidraw's grid spacing
     ctx.save();
 
-    // Set the exact dot color and size as Excalidraw
-    ctx.fillStyle = '#e9ecef'; // Excalidraw's dot color
-    ctx.globalAlpha = 1;
+    // Adapt colors for dark/light mode
+    const dotColor = darkMode ? '#374151' : '#e5e7eb';
+    const majorDotColor = darkMode ? '#4b5563' : '#d1d5db';
 
-    // Draw dots at grid intersections
-    for (let x = 0; x <= width; x += gridSize) {
-      for (let y = 0; y <= height; y += gridSize) {
+    // Primary grid dots
+    ctx.fillStyle = dotColor;
+    ctx.globalAlpha = darkMode ? 0.6 : 0.8;
+
+    // Calculate starting points to center the grid
+    const startX = (width % gridSize) / 2;
+    const startY = (height % gridSize) / 2;
+
+    // Draw dots at grid intersections with Excalidraw's exact pattern
+    for (let x = startX; x <= width; x += gridSize) {
+      for (let y = startY; y <= height; y += gridSize) {
         ctx.beginPath();
-        ctx.arc(x, y, 0.5, 0, Math.PI * 2); // Small dots like Excalidraw
+        ctx.arc(x, y, 1, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Add subtle secondary grid (every 5th line) for better reference
+    ctx.fillStyle = majorDotColor;
+    ctx.globalAlpha = darkMode ? 0.4 : 0.5;
+    
+    const majorGridSize = gridSize * 5; // Every 5th line
+    const majorStartX = (width % majorGridSize) / 2;
+    const majorStartY = (height % majorGridSize) / 2;
+
+    for (let x = majorStartX; x <= width; x += majorGridSize) {
+      for (let y = majorStartY; y <= height; y += majorGridSize) {
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -335,6 +365,23 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
             }
           }
           break;
+        case 'image':
+          // Draw image element
+          if (element.imageData) {
+            const canvas = roughCanvas.canvas;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              const img = new Image();
+              img.onload = () => {
+                ctx.save();
+                ctx.globalAlpha = element.opacity || 1;
+                ctx.drawImage(img, x, y, width, height);
+                ctx.restore();
+              };
+              img.src = element.imageData;
+            }
+          }
+          break;
       }
     } catch (error) {
       console.warn('Error drawing element:', error);
@@ -455,7 +502,7 @@ const Canvas = forwardRef<HTMLCanvasElement, CanvasProps>(({
         onMouseLeave={onMouseUp}
         onDoubleClick={onDoubleClick}
         style={{
-          backgroundColor: '#ffffff', // Pure white background like Excalidraw
+          backgroundColor: darkMode ? '#1f2937' : '#ffffff',
           imageRendering: 'auto',
           WebkitFontSmoothing: 'antialiased',
         }}

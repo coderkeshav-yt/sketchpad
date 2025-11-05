@@ -156,7 +156,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
                   ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
-              title="Paste (Ctrl+V)"
+              title="Paste from clipboard - supports images & text (Ctrl+V)"
             >
               📄
             </button>

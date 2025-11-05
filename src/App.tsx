@@ -64,6 +64,8 @@ function App() {
     });
   }, []);
 
+
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -196,7 +198,125 @@ function App() {
     }
   };
 
-  const handlePaste = () => {
+  const handlePaste = async () => {
+    try {
+      // First try to paste from system clipboard
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const clipboardItems = await navigator.clipboard.read();
+        
+        for (const clipboardItem of clipboardItems) {
+          // Handle images
+          for (const type of clipboardItem.types) {
+            if (type.startsWith('image/')) {
+              const blob = await clipboardItem.getType(type);
+              const reader = new FileReader();
+              
+              reader.onload = (e) => {
+                const imageData = e.target?.result as string;
+                const img = new Image();
+                
+                img.onload = () => {
+                  // Calculate appropriate size (max 400px width/height)
+                  const maxSize = 400;
+                  let newWidth = img.width;
+                  let newHeight = img.height;
+                  
+                  if (newWidth > maxSize || newHeight > maxSize) {
+                    const ratio = Math.min(maxSize / newWidth, maxSize / newHeight);
+                    newWidth = newWidth * ratio;
+                    newHeight = newHeight * ratio;
+                  }
+                  
+                  const newElement: DrawingElement = {
+                    id: generateId(),
+                    type: 'image',
+                    x: 100, // Default position
+                    y: 100,
+                    width: newWidth,
+                    height: newHeight,
+                    strokeColor: '#000000',
+                    fillColor: 'transparent',
+                    strokeWidth: 1,
+                    imageData,
+                    originalWidth: img.width,
+                    originalHeight: img.height,
+                    seed: Math.floor(Math.random() * 1000000),
+                  };
+                  
+                  updateElements(elements => [...elements, newElement]);
+                  setState(prev => ({ ...prev, selectedElementId: newElement.id }));
+                };
+                
+                img.src = imageData;
+              };
+              
+              reader.readAsDataURL(blob);
+              return; // Exit after handling first image
+            }
+          }
+          
+          // Handle text
+          if (clipboardItem.types.includes('text/plain')) {
+            const textBlob = await clipboardItem.getType('text/plain');
+            const text = await textBlob.text();
+            
+            if (text.trim()) {
+              const newElement: DrawingElement = {
+                id: generateId(),
+                type: 'text',
+                x: 100,
+                y: 100,
+                width: Math.max(200, text.length * 8),
+                height: 30,
+                strokeColor: state.strokeColor,
+                fillColor: 'transparent',
+                strokeWidth: state.strokeWidth,
+                text: text.trim(),
+                fontSize: 16,
+                fontFamily: 'Arial, sans-serif',
+                textAlign: 'left',
+                seed: Math.floor(Math.random() * 1000000),
+              };
+              
+              updateElements(elements => [...elements, newElement]);
+              setState(prev => ({ ...prev, selectedElementId: newElement.id }));
+              return;
+            }
+          }
+        }
+      }
+      
+      // Fallback to text-only clipboard API
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text.trim()) {
+          const newElement: DrawingElement = {
+            id: generateId(),
+            type: 'text',
+            x: 100,
+            y: 100,
+            width: Math.max(200, text.length * 8),
+            height: 30,
+            strokeColor: state.strokeColor,
+            fillColor: 'transparent',
+            strokeWidth: state.strokeWidth,
+            text: text.trim(),
+            fontSize: 16,
+            fontFamily: 'Arial, sans-serif',
+            textAlign: 'left',
+            seed: Math.floor(Math.random() * 1000000),
+          };
+          
+          updateElements(elements => [...elements, newElement]);
+          setState(prev => ({ ...prev, selectedElementId: newElement.id }));
+          return;
+        }
+      }
+    } catch (error) {
+      console.log('Clipboard access denied or not supported, using internal clipboard');
+    }
+    
+    // Fallback to internal clipboard
     if (state.clipboard.length > 0) {
       const newElements = state.clipboard.map(el => ({
         ...el,
@@ -562,8 +682,105 @@ function App() {
     }
   };
 
+  // Drag and drop visual feedback
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    let dragCounter = 0;
+
+    const handleDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter++;
+      if (e.dataTransfer?.types.includes('Files')) {
+        setIsDragging(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter === 0) {
+        setIsDragging(false);
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounter = 0;
+      setIsDragging(false);
+      
+      const files = Array.from(e.dataTransfer?.files || []);
+      const imageFiles = files.filter(file => file.type.startsWith('image/'));
+      
+      imageFiles.forEach((file, index) => {
+        const reader = new FileReader();
+        
+        reader.onload = (event) => {
+          const imageData = event.target?.result as string;
+          const img = new Image();
+          
+          img.onload = () => {
+            // Calculate appropriate size
+            const maxSize = 400;
+            let newWidth = img.width;
+            let newHeight = img.height;
+            
+            if (newWidth > maxSize || newHeight > maxSize) {
+              const ratio = Math.min(maxSize / newWidth, maxSize / newHeight);
+              newWidth = newWidth * ratio;
+              newHeight = newHeight * ratio;
+            }
+            
+            const rect = canvasRef.current?.getBoundingClientRect();
+            const x = rect ? e.clientX - rect.left : 100;
+            const y = rect ? e.clientY - rect.top : 100;
+            
+            const newElement: DrawingElement = {
+              id: generateId(),
+              type: 'image',
+              x: x + (index * 20), // Offset multiple images
+              y: y + (index * 20),
+              width: newWidth,
+              height: newHeight,
+              strokeColor: '#000000',
+              fillColor: 'transparent',
+              strokeWidth: 1,
+              imageData,
+              originalWidth: img.width,
+              originalHeight: img.height,
+              seed: Math.floor(Math.random() * 1000000),
+            };
+            
+            updateElements(elements => [...elements, newElement]);
+            setState(prev => ({ ...prev, selectedElementId: newElement.id }));
+          };
+          
+          img.src = imageData;
+        };
+        
+        reader.readAsDataURL(file);
+      });
+    };
+
+    document.addEventListener('dragenter', handleDragEnter);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('drop', handleDrop);
+
+    return () => {
+      document.removeEventListener('dragenter', handleDragEnter);
+      document.removeEventListener('dragleave', handleDragLeave);
+      document.removeEventListener('dragover', handleDragOver);
+      document.removeEventListener('drop', handleDrop);
+    };
+  }, [updateElements]);
+
   return (
-    <div className={`h-screen w-screen overflow-hidden ${
+    <div className={`h-screen w-screen overflow-hidden relative ${
       state.darkMode ? 'bg-gray-900' : 'bg-gray-50'
     }`}>
       <Toolbar
@@ -607,6 +824,8 @@ function App() {
           editingElementId={state.editingElementId}
           isResizing={state.isResizing}
           resizeHandle={state.resizeHandle}
+          gridEnabled={state.gridEnabled}
+          darkMode={state.darkMode}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -615,6 +834,23 @@ function App() {
           onMouseHover={handleMouseHover}
         />
       </div>
+
+      {/* Drag and Drop Overlay */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 pointer-events-none">
+          <div className={`p-8 rounded-lg border-2 border-dashed border-blue-400 ${
+            state.darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'
+          }`}>
+            <div className="text-center">
+              <div className="text-4xl mb-4">📷</div>
+              <div className="text-xl font-semibold mb-2">Drop Images Here</div>
+              <div className="text-sm opacity-75">
+                Supports JPG, PNG, GIF, WebP and more
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
